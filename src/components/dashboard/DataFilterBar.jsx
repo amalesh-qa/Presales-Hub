@@ -1,5 +1,6 @@
 import React from 'react';
 import { Search, Filter, RotateCcw, EyeOff, Eye } from 'lucide-react';
+import { useTheme } from '../../context/ThemeContext';
 
 export default function DataFilterBar({
   searchQuery,
@@ -16,6 +17,7 @@ export default function DataFilterBar({
   showTable = true,
   onToggleTable
 }) {
+  const { themeConfig } = useTheme();
   const hasActiveFilters = searchQuery || selectedRegion !== 'All' || selectedScope !== 'All' || selectedStatus !== 'All';
 
   // If table is hidden, don't render filter toolbar in DOM if requested, or render compact toggle
@@ -26,10 +28,10 @@ export default function DataFilterBar({
   }
 
   return (
-    <div id="dashboard-filter-bar" className="glass-card rounded-2xl p-4 border border-slate-800/80 mb-6 flex flex-col md:flex-row items-center justify-between gap-4">
+    <div id="dashboard-filter-bar" className={`${themeConfig.filterContainer} p-4 mb-6 flex flex-col md:flex-row items-center justify-between gap-4 transition-all duration-200`}>
       {/* Search Bar */}
       <div className="relative w-full md:w-80">
-        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500">
+        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none opacity-60">
           <Search className="w-4 h-4" />
         </div>
         <input
@@ -37,14 +39,14 @@ export default function DataFilterBar({
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           placeholder="Search opportunity or client..."
-          className="w-full pl-9 pr-4 py-2 bg-slate-900/90 border border-slate-700/80 rounded-xl text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-xs font-medium"
+          className={`w-full pl-9 pr-4 py-2 text-xs font-medium transition-all ${themeConfig.inputClass}`}
         />
       </div>
 
       {/* Dropdown Filters & Ignore Ledger Toggle */}
       <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-        <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-400">
-          <Filter className="w-3.5 h-3.5 text-indigo-400" />
+        <div className={`flex items-center gap-1.5 text-xs font-bold ${themeConfig.textSecondary}`}>
+          <Filter className="w-3.5 h-3.5" style={{ color: themeConfig.swatch[0] }} />
           <span>Filter By:</span>
         </div>
 
@@ -52,7 +54,7 @@ export default function DataFilterBar({
         <select
           value={selectedRegion}
           onChange={(e) => setSelectedRegion(e.target.value)}
-          className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-slate-200 text-xs focus:outline-none focus:border-indigo-500 cursor-pointer font-medium"
+          className={`px-3 py-2 text-xs font-semibold cursor-pointer ${themeConfig.selectClass}`}
         >
           <option value="All">All Regions</option>
           {regions.map(r => (
@@ -64,7 +66,7 @@ export default function DataFilterBar({
         <select
           value={selectedScope}
           onChange={(e) => setSelectedScope(e.target.value)}
-          className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-slate-200 text-xs focus:outline-none focus:border-indigo-500 cursor-pointer font-medium"
+          className={`px-3 py-2 text-xs font-semibold cursor-pointer ${themeConfig.selectClass}`}
         >
           <option value="All">All QE Scopes</option>
           {scopes.map(s => (
@@ -76,7 +78,7 @@ export default function DataFilterBar({
         <select
           value={selectedStatus}
           onChange={(e) => setSelectedStatus(e.target.value)}
-          className="px-3 py-2 bg-slate-900 border border-slate-700 rounded-xl text-slate-200 text-xs focus:outline-none focus:border-indigo-500 cursor-pointer font-medium"
+          className={`px-3 py-2 text-xs font-semibold cursor-pointer ${themeConfig.selectClass}`}
         >
           <option value="All">All Statuses</option>
           <option value="Won">Won</option>
@@ -89,7 +91,11 @@ export default function DataFilterBar({
         {hasActiveFilters && (
           <button
             onClick={onReset}
-            className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-rose-400 rounded-xl text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer"
+            className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+              themeConfig.mode === 'light'
+                ? 'bg-rose-100 hover:bg-rose-200 text-rose-900 border-2 border-slate-900 shadow-[2px_2px_0_0_#0f172a]'
+                : 'bg-rose-500/15 hover:bg-rose-500/25 text-rose-300 border border-rose-500/40'
+            }`}
           >
             <RotateCcw className="w-3.5 h-3.5" />
             <span>Reset</span>
@@ -100,9 +106,9 @@ export default function DataFilterBar({
         <button
           onClick={onToggleTable}
           title={showTable ? 'Ignore/Hide the Detailed QE Proposals Ledger table' : 'Show the Detailed QE Proposals Ledger table'}
-          className="px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border cursor-pointer bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700"
+          className={`px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border cursor-pointer ${themeConfig.buttonSecondary}`}
         >
-          <EyeOff className="w-3.5 h-3.5 text-slate-400" />
+          <EyeOff className="w-3.5 h-3.5 opacity-70" />
           <span>Ignore Ledger</span>
         </button>
       </div>

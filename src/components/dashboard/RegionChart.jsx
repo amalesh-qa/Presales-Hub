@@ -1,10 +1,12 @@
 import React from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 import { Globe } from 'lucide-react';
+import { useTheme } from '../../context/ThemeContext';
 
-const REGION_COLORS = ['#6366f1', '#3b82f6', '#06b6d4', '#10b981', '#8b5cf6', '#ec4899'];
+export default function RegionChart({ proposals = [], className = '' }) {
+  const { themeConfig } = useTheme();
+  const regionColors = themeConfig.chartTheme.regionColors;
 
-export default function RegionChart({ proposals = [] }) {
   const regionCounts = {};
 
   proposals.forEach(p => {
@@ -20,12 +22,12 @@ export default function RegionChart({ proposals = [] }) {
     if (active && payload && payload.length) {
       const dataPoint = payload[0].payload;
       return (
-        <div className="bg-slate-900 border border-slate-700 p-3 rounded-xl shadow-xl text-xs">
-          <div className="font-bold text-white flex items-center gap-2">
-            <Globe className="w-3.5 h-3.5 text-indigo-400" />
+        <div className={`${themeConfig.chartTheme.tooltipBg} ${themeConfig.chartTheme.tooltipBorder} p-3 rounded-xl shadow-xl text-xs`}>
+          <div className={`${themeConfig.chartTheme.tooltipTitle} flex items-center gap-2`}>
+            <Globe className="w-3.5 h-3.5 text-current" />
             {dataPoint.region}
           </div>
-          <div className="text-slate-300 mt-1 font-mono">
+          <div className={`${themeConfig.chartTheme.tooltipValue} mt-1 font-mono`}>
             {dataPoint.count} Proposals Submitted
           </div>
         </div>
@@ -35,44 +37,53 @@ export default function RegionChart({ proposals = [] }) {
   };
 
   return (
-    <div className="glass-card rounded-2xl p-6 border border-slate-800/80 flex flex-col justify-between h-[380px]">
+    <div className={`${themeConfig.card} ${themeConfig.cardHover} p-6 flex flex-col justify-between ${className || 'h-[380px]'}`}>
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center border border-blue-500/30">
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center border ${
+            themeConfig.mode === 'light'
+              ? 'bg-blue-100 text-blue-700 border-2 border-slate-900 shadow-[1px_1px_0_0_#0f172a]'
+              : 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+          }`}>
             <Globe className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-white">Proposals by Geographic Region</h3>
-            <p className="text-[11px] text-slate-400 font-medium">Proposal volume per territory</p>
+            <h3 className={`text-sm ${themeConfig.cardHeader}`}>Proposals by Geographic Region</h3>
+            <p className={`text-[11px] ${themeConfig.cardSubtitle}`}>Proposal volume per territory</p>
           </div>
         </div>
       </div>
 
       <div className="w-full h-[280px]">
         {data.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-slate-500 text-xs font-medium">
+          <div className={`h-full flex items-center justify-center text-xs font-medium ${themeConfig.textMuted}`}>
             No regional data available
           </div>
         ) : (
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} margin={{ top: 20, right: 20, left: -10, bottom: 20 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke={themeConfig.chartTheme.gridStroke} vertical={false} />
               <XAxis
                 dataKey="region"
-                stroke="#64748b"
-                tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 600 }}
+                stroke={themeConfig.chartTheme.axisStroke}
+                tick={{ fill: themeConfig.chartTheme.tickFill, fontSize: 11, fontWeight: 600 }}
                 tickLine={false}
               />
               <YAxis
-                stroke="#64748b"
-                tick={{ fill: '#94a3b8', fontSize: 11 }}
+                stroke={themeConfig.chartTheme.axisStroke}
+                tick={{ fill: themeConfig.chartTheme.tickFill, fontSize: 11 }}
                 allowDecimals={false}
                 tickLine={false}
               />
               <Tooltip content={<CustomTooltip />} />
               <Bar dataKey="count" radius={[8, 8, 0, 0]}>
                 {data.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={REGION_COLORS[index % REGION_COLORS.length]} />
+                  <Cell
+                    key={`cell-${index}`}
+                    fill={regionColors[index % regionColors.length]}
+                    stroke={themeConfig.mode === 'light' ? '#0f172a' : 'transparent'}
+                    strokeWidth={themeConfig.mode === 'light' ? 1.5 : 0}
+                  />
                 ))}
               </Bar>
             </BarChart>

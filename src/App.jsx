@@ -1,25 +1,39 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import LoginPage from './components/auth/LoginPage';
 import OtpPage from './components/auth/OtpPage';
 import Navbar from './components/layout/Navbar';
 import TabNavigation from './components/layout/TabNavigation';
-import KpiCards from './components/dashboard/KpiCards';
-import OutcomeChart from './components/dashboard/OutcomeChart';
-import RegionChart from './components/dashboard/RegionChart';
-import CapabilityChart from './components/dashboard/CapabilityChart';
-import VelocityChart from './components/dashboard/VelocityChart';
-import ExecutiveInsights from './components/dashboard/ExecutiveInsights';
-import DataFilterBar from './components/dashboard/DataFilterBar';
-import ProposalTable from './components/dashboard/ProposalTable';
 import DashboardShareActions from './components/dashboard/DashboardShareActions';
 import UserManagement from './components/configuration/UserManagement';
 import SheetIntegration from './components/configuration/SheetIntegration';
 import LoadingSkeleton from './components/common/LoadingSkeleton';
 
 import { getCurrentSession, logoutUser, getStoredUsers } from './services/authService';
-import { getStoredSheetUrl, saveStoredSheetUrl, fetchSheetData, clearStoredLocalCsvData } from './services/sheetService';
+import {
+  getStoredSheetUrl,
+  saveStoredSheetUrl,
+  clearStoredLocalCsvData,
+  getDataMode
+} from './services/sheetService';
+import { useLiveSheetSync } from './hooks/useLiveSheetSync';
+import { ThemeProvider, useTheme } from './context/ThemeContext';
+import { LayoutProvider } from './context/LayoutContext';
+import LayoutSelector from './components/common/LayoutSelector';
+import DashboardLayoutView from './components/dashboard/DashboardLayoutView';
 
 export default function App() {
+  return (
+    <ThemeProvider>
+      <LayoutProvider>
+        <MainApp />
+      </LayoutProvider>
+    </ThemeProvider>
+  );
+}
+
+function MainApp() {
+  const { themeConfig } = useTheme();
+
   // Auth state
   const [currentUser, setCurrentUser] = useState(null);
   const [authStep, setAuthStep] = useState('email');
@@ -32,17 +46,42 @@ export default function App() {
   // Dashboard screenshot capture ref
   const dashboardRef = useRef(null);
 
-  // Google Sheet Data state
-  const [sheetUrl, setSheetUrl] = useState(DEFAULT_SHEET_URL_INIT);
+  // Sheet URL state
+  const [sheetUrl, setSheetUrl] = useState(() => getStoredSheetUrl());
   const [proposals, setProposals] = useState([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
-  const [lastSyncResult, setLastSyncResult] = useState(null);
 
   // Filter state
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRegion, setSelectedRegion] = useState('All');
   const [selectedScope, setSelectedScope] = useState('All');
   const [selectedStatus, setSelectedStatus] = useState('All');
+
+  // Data update callback for live sync
+  const handleDataReceived = useCallback((newData, resultInfo) => {
+    setProposals(newData);
+    setIsLoadingData(false);
+  }, []);
+
+  // Hook for continuous live Google Sheet synchronization & polling
+  const {
+    dataMode,
+    isSyncing,
+    syncStatus,
+    lastSyncTime,
+    lastSyncResult,
+    syncError,
+    autoSyncEnabled,
+    syncInterval,
+    triggerManualSync,
+    toggleAutoSync,
+    changeSyncInterval,
+    switchDataSourceMode,
+    testConnection
+  } = useLiveSheetSync({
+    sheetUrl,
+    onDataUpdate: handleDataReceived
+  });
 
   useEffect(() => {
     const session = getCurrentSession();
@@ -51,32 +90,14 @@ export default function App() {
     }
     setUsersList(getStoredUsers());
     const savedUrl = getStoredSheetUrl();
-    setSheetUrl(savedUrl);
+    if (savedUrl) setSheetUrl(savedUrl);
   }, []);
-
-  useEffect(() => {
-    if (currentUser) {
-      loadDataFromSheet(sheetUrl);
-    }
-  }, [currentUser]);
-
-  const loadDataFromSheet = async (url, forceRemote = false) => {
-    setIsLoadingData(true);
-    if (forceRemote) {
-      handleResetFilters();
-      setShowTable(true);
-    }
-    const result = await fetchSheetData(url, forceRemote);
-    setProposals(result.data);
-    setLastSyncResult(result);
-    setIsLoadingData(false);
-  };
 
   const handleLocalDataImport = (newData, resultInfo) => {
     handleResetFilters();
     setShowTable(true);
     setProposals(newData);
-    setLastSyncResult(resultInfo);
+    switchDataSourceMode('local_upload');
   };
 
   const handleProceedToOtp = (email) => {
@@ -98,6 +119,7 @@ export default function App() {
   const handleSaveSheetUrl = (newUrl) => {
     setSheetUrl(newUrl);
     saveStoredSheetUrl(newUrl);
+    switchDataSourceMode('google_sheet');
   };
 
   const uniqueRegions = useMemo(() => {
@@ -135,8 +157,10 @@ export default function App() {
   const handleRefreshAndClearData = async () => {
     clearStoredLocalCsvData();
     localStorage.removeItem('presales_hub_cached_data_v1');
+    localStorage.removeItem('presales_hub_data_fingerprint_v1');
     handleResetFilters();
-    await loadDataFromSheet(sheetUrl, true);
+    switchDataSourceMode('google_sheet');
+    await triggerManualSync(true);
   };
 
   if (!currentUser) {
@@ -160,13 +184,21 @@ export default function App() {
   const isAdmin = currentUser.role === 'Admin';
 
   return (
-    <div className="min-h-screen bg-[#0b0f19] text-slate-100 flex flex-col font-sans">
+    <div
+      className={`min-h-screen ${themeConfig.pageBgClass} flex flex-col transition-colors duration-300`}
+      style={{ fontFamily: themeConfig.fontFamily }}
+    >
       <Navbar currentUser={currentUser} onLogout={handleLogout} />
 
       <TabNavigation
         activeTab={activeTab}
         setActiveTab={setActiveTab}
         currentUser={currentUser}
+        syncStatus={syncStatus}
+        lastSyncTime={lastSyncTime}
+        dataMode={dataMode}
+        onManualSync={triggerManualSync}
+        isSyncing={isSyncing}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -175,44 +207,37 @@ export default function App() {
             {/* Dashboard Header Bar */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
               <div>
-                <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+                <h1 className={`text-2xl sm:text-3xl font-black tracking-tight ${themeConfig.textPrimary}`}>
                   QE Proposal and Presales Dashboard
                 </h1>
-                <p className="text-slate-400 text-xs sm:text-sm mt-1">
+                <p className={`text-xs sm:text-sm mt-1 font-medium ${themeConfig.textSecondary}`}>
                   Real-time pipeline metrics, outcome distributions, and executive intelligence
                 </p>
               </div>
 
-              {/* Share & Email Dashboard Buttons */}
-              <DashboardShareActions
-                dashboardRef={dashboardRef}
-                showTable={showTable}
-                onToggleTable={() => setShowTable(prev => !prev)}
-                onRefreshData={handleRefreshAndClearData}
-                isRefreshing={isLoadingData}
-              />
+              {/* Header Actions: Layout Selector & Dashboard Share Actions */}
+              <div className="flex flex-wrap items-center gap-3">
+                <LayoutSelector />
+                <DashboardShareActions
+                  dashboardRef={dashboardRef}
+                  showTable={showTable}
+                  onToggleTable={() => setShowTable(prev => !prev)}
+                  onRefreshData={handleRefreshAndClearData}
+                  isRefreshing={isSyncing}
+                />
+              </div>
             </div>
 
             {isLoadingData ? (
               <LoadingSkeleton />
             ) : (
-              <div ref={dashboardRef} className="p-3 rounded-2xl bg-[#0b0f19] inline-block w-full">
-                {/* Section A: KPI Summary Cards */}
-                <KpiCards proposals={proposals} />
-
-                {/* Section C: Key Executive Insights */}
-                <ExecutiveInsights proposals={proposals} />
-
-                {/* Section B: Data Visualizations (4 Charts Grid) */}
-                <div id="charts-grid-container" className={`grid grid-cols-1 lg:grid-cols-2 gap-6 ${showTable ? 'mb-8' : 'mb-0'}`}>
-                  <OutcomeChart proposals={filteredProposals} />
-                  <RegionChart proposals={filteredProposals} />
-                  <CapabilityChart proposals={filteredProposals} />
-                  <VelocityChart proposals={filteredProposals} />
-                </div>
-
-                {/* Interactive Data Filter Bar (Hidden when table ignored) */}
-                <DataFilterBar
+              <div
+                ref={dashboardRef}
+                className={`p-3 rounded-2xl ${themeConfig.dashboardWrapperClass} inline-block w-full transition-colors duration-300`}
+              >
+                <DashboardLayoutView
+                  proposals={proposals}
+                  filteredProposals={filteredProposals}
                   searchQuery={searchQuery}
                   setSearchQuery={setSearchQuery}
                   selectedRegion={selectedRegion}
@@ -227,13 +252,6 @@ export default function App() {
                   showTable={showTable}
                   onToggleTable={() => setShowTable(prev => !prev)}
                 />
-
-                {/* Detailed QE Proposals Ledger */}
-                <ProposalTable
-                  proposals={filteredProposals}
-                  showTable={showTable}
-                  onToggleTable={() => setShowTable(prev => !prev)}
-                />
               </div>
             )}
           </div>
@@ -242,10 +260,10 @@ export default function App() {
         {activeTab === 'configuration' && isAdmin && (
           <div>
             <div className="mb-8">
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+              <h1 className={`text-2xl sm:text-3xl font-black tracking-tight ${themeConfig.textPrimary}`}>
                 Backend Configuration Control Panel
               </h1>
-              <p className="text-slate-400 text-xs sm:text-sm mt-1">
+              <p className={`text-xs sm:text-sm mt-1 font-medium ${themeConfig.textSecondary}`}>
                 Manage user access permissions and connect live confidential Google Sheet data sources
               </p>
             </div>
@@ -259,10 +277,25 @@ export default function App() {
             <SheetIntegration
               sheetUrl={sheetUrl}
               onSaveSheetUrl={handleSaveSheetUrl}
-              onSyncNow={loadDataFromSheet}
-              isSyncing={isLoadingData}
+              onSyncNow={(url, force) => triggerManualSync(force)}
+              isSyncing={isSyncing}
               lastSyncResult={lastSyncResult}
               onLocalDataImport={handleLocalDataImport}
+              syncMeta={{
+                dataMode,
+                isSyncing,
+                syncStatus,
+                lastSyncTime,
+                lastSyncResult,
+                syncError,
+                autoSyncEnabled,
+                syncInterval,
+                triggerManualSync,
+                toggleAutoSync,
+                changeSyncInterval,
+                switchDataSourceMode,
+                testConnection
+              }}
             />
           </div>
         )}
@@ -270,5 +303,3 @@ export default function App() {
     </div>
   );
 }
-
-const DEFAULT_SHEET_URL_INIT = 'https://docs.google.com/spreadsheets/d/1kZZam5HXYYi-DzfFWYaIwmhwdVYa-jdEUgRXaKeCTpk/edit?gid=0#gid=0';

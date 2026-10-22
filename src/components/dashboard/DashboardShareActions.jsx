@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { Camera, Mail, CheckCircle2, Copy, Sparkles, X, Download, AlertCircle, EyeOff, Eye, RefreshCw } from 'lucide-react';
 import { toCanvas } from 'html-to-image';
+import { useTheme } from '../../context/ThemeContext';
 
 export default function DashboardShareActions({ dashboardRef, showTable, onToggleTable, onRefreshData, isRefreshing }) {
+  const { themeConfig } = useTheme();
   const [capturing, setCapturing] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
@@ -18,7 +20,7 @@ export default function DashboardShareActions({ dashboardRef, showTable, onToggl
     try {
       const pixelRatio = 2;
       const options = {
-        backgroundColor: '#0b0f19',
+        backgroundColor: themeConfig.bgHex || '#0b0f19',
         pixelRatio,
         cacheBust: true,
         style: {
@@ -166,33 +168,33 @@ export default function DashboardShareActions({ dashboardRef, showTable, onToggl
           title={showTable ? 'Hide Detailed Proposals Ledger table from screen' : 'Show Detailed Proposals Ledger table on screen'}
           className={`px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border cursor-pointer ${
             showTable
-              ? 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700/80'
-              : 'bg-indigo-600 text-white border-indigo-500 shadow-lg shadow-indigo-600/30'
+              ? themeConfig.buttonSecondary
+              : themeConfig.buttonPrimary
           }`}
         >
           {showTable ? (
             <>
-              <EyeOff className="w-3.5 h-3.5 text-slate-400" />
+              <EyeOff className="w-3.5 h-3.5 opacity-70" />
               <span>Ignore Ledger</span>
             </>
           ) : (
             <>
-              <Eye className="w-3.5 h-3.5 text-white" />
+              <Eye className="w-3.5 h-3.5 text-current" />
               <span>Show Ledger</span>
             </>
           )}
         </button>
 
         {/* Checkbox to ignore ledger in screenshot */}
-        <label className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-900 border border-slate-700/80 text-xs font-semibold text-slate-300 cursor-pointer hover:bg-slate-800 transition">
+        <label className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold cursor-pointer transition ${themeConfig.buttonSecondary}`}>
           <input
             type="checkbox"
             checked={ignoreLedgerInExport}
             onChange={handleToggleLedgerExport}
-            className="w-3.5 h-3.5 rounded bg-slate-950 border-slate-700 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+            className="w-3.5 h-3.5 rounded cursor-pointer"
           />
           <span className="flex items-center gap-1 text-[11px]">
-            <EyeOff className="w-3.5 h-3.5 text-indigo-400" />
+            <EyeOff className="w-3.5 h-3.5 opacity-70" />
             Compact Trimmed Screenshot
           </span>
         </label>
@@ -201,7 +203,7 @@ export default function DashboardShareActions({ dashboardRef, showTable, onToggl
         <button
           onClick={handleCopyScreenshot}
           disabled={capturing}
-          className="px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-500 hover:to-blue-500 text-white font-bold text-xs transition shadow-lg shadow-indigo-600/25 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+          className={`px-4 py-2 font-bold text-xs transition flex items-center gap-2 cursor-pointer disabled:opacity-50 ${themeConfig.buttonPrimary}`}
         >
           {capturing ? (
             <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
@@ -216,9 +218,9 @@ export default function DashboardShareActions({ dashboardRef, showTable, onToggl
           onClick={handleDownloadPng}
           disabled={capturing}
           title="Download PNG image file to disk"
-          className="px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700/80 font-bold text-xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+          className={`px-3 py-2 font-bold text-xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${themeConfig.buttonSecondary}`}
         >
-          <Download className="w-3.5 h-3.5 text-emerald-400" />
+          <Download className="w-3.5 h-3.5 text-emerald-500" />
           <span className="hidden sm:inline">Download PNG</span>
         </button>
 
@@ -228,9 +230,9 @@ export default function DashboardShareActions({ dashboardRef, showTable, onToggl
             onClick={onRefreshData}
             disabled={capturing || isRefreshing}
             title="Refresh dataset from Google Sheet and clear local cached filters/data"
-            className="px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-700/80 font-bold text-xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            className={`px-3.5 py-2 font-bold text-xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${themeConfig.buttonSecondary}`}
           >
-            <RefreshCw className={`w-3.5 h-3.5 text-indigo-400 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} style={{ color: themeConfig.swatch[0] }} />
             <span>Refresh & Reset Data</span>
           </button>
         )}
@@ -239,9 +241,9 @@ export default function DashboardShareActions({ dashboardRef, showTable, onToggl
         <button
           onClick={handleOpenEmailModal}
           disabled={capturing}
-          className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 font-bold text-xs transition flex items-center gap-2 cursor-pointer disabled:opacity-50"
+          className={`px-4 py-2 font-bold text-xs transition flex items-center gap-2 cursor-pointer disabled:opacity-50 ${themeConfig.buttonGhost}`}
         >
-          <Mail className="w-3.5 h-3.5 text-indigo-400" />
+          <Mail className="w-3.5 h-3.5" style={{ color: themeConfig.swatch[0] }} />
           <span>Email Dashboard</span>
         </button>
       </div>

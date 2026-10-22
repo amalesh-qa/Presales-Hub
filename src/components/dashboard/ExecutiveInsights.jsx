@@ -1,123 +1,161 @@
 import React, { useMemo } from 'react';
-import { Sparkles, Award, AlertTriangle, Cpu, MapPin, Layers, RefreshCw } from 'lucide-react';
+import { Sparkles, Award, AlertTriangle, Cpu, MapPin, Layers } from 'lucide-react';
 import { calculateExecutiveInsights } from '../../services/aiAnalysisService';
+import { useTheme } from '../../context/ThemeContext';
 
-export default function ExecutiveInsights({ proposals = [] }) {
-  const insights = useMemo(() => {
-    return calculateExecutiveInsights(proposals);
-  }, [proposals]);
+export function ExecutiveHighlightCards({ proposals = [], className = '' }) {
+  const { themeConfig } = useTheme();
+  const insights = useMemo(() => calculateExecutiveInsights(proposals), [proposals]);
+  const exec = themeConfig.executiveCards;
+
+  const containerClass = className || "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4";
 
   return (
-    <div className="mb-8">
-      {/* Header Banner */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-500 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-amber-500/20 border border-amber-400/30">
-            <Sparkles className="w-4 h-4 animate-spin-slow" />
+    <div className={containerClass}>
+      {/* Card 1: Quarterly Wins */}
+      <div className={`p-5 rounded-2xl shadow-xl relative overflow-hidden group transition-all ${exec.winsCard}`}>
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-xs font-bold uppercase tracking-wider text-emerald-500 dark:text-emerald-400">Quarterly Wins</span>
+          <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-500 dark:text-emerald-400 flex items-center justify-center border border-emerald-500/30">
+            <Award className="w-4 h-4" />
           </div>
-          <div>
-            <h2 className="text-base font-bold text-white tracking-tight flex items-center gap-2">
-              <span>Executive Briefing & AI Intelligence</span>
-              <span className="text-[10px] uppercase font-mono bg-amber-500/20 text-amber-300 px-2 py-0.5 rounded border border-amber-500/30">
-                Premium Insights
+        </div>
+        <div className={`text-2xl font-black font-mono tracking-tight ${themeConfig.textPrimary}`}>
+          {insights.quarterlyWins} <span className="text-xs font-sans font-semibold text-emerald-500 dark:text-emerald-400">Proposals Won</span>
+        </div>
+        <p className={`text-[11px] mt-1 ${themeConfig.textSecondary}`}>Confirmed victories in recent quarter</p>
+      </div>
+
+      {/* Card 2: Quarterly Losses */}
+      <div className={`p-5 rounded-2xl shadow-xl relative overflow-hidden group transition-all ${exec.lossesCard}`}>
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-xs font-bold uppercase tracking-wider text-rose-500 dark:text-rose-400">Quarterly Losses</span>
+          <div className="w-9 h-9 rounded-xl bg-rose-500/20 text-rose-500 dark:text-rose-400 flex items-center justify-center border border-rose-500/30">
+            <AlertTriangle className="w-4 h-4" />
+          </div>
+        </div>
+        <div className={`text-2xl font-black font-mono tracking-tight ${themeConfig.textPrimary}`}>
+          {insights.quarterlyLosses} <span className="text-xs font-sans font-semibold text-rose-500 dark:text-rose-400">Proposals Lost</span>
+        </div>
+        <p className={`text-[11px] mt-1 ${themeConfig.textSecondary}`}>Missed deals in recent quarter</p>
+      </div>
+
+      {/* Card 3: Highest Demand Scope */}
+      <div className={`p-5 rounded-2xl shadow-xl relative overflow-hidden group transition-all ${exec.scopeCard}`}>
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-xs font-bold uppercase tracking-wider text-blue-500 dark:text-blue-400">Highest Demand Scope</span>
+          <div className="w-9 h-9 rounded-xl bg-blue-500/20 text-blue-500 dark:text-blue-400 flex items-center justify-center border border-blue-500/30">
+            <Layers className="w-4 h-4" />
+          </div>
+        </div>
+        <div className={`text-sm font-bold tracking-tight leading-snug line-clamp-2 ${themeConfig.textPrimary}`}>
+          {insights.highestDemandScope}
+        </div>
+        <p className={`text-[11px] mt-1 ${themeConfig.textSecondary}`}>Top requested QE capability</p>
+      </div>
+
+      {/* Card 4: Highest Opportunity Region */}
+      <div className={`p-5 rounded-2xl shadow-xl relative overflow-hidden group transition-all ${exec.regionCard}`}>
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-xs font-bold uppercase tracking-wider text-indigo-500 dark:text-indigo-400">Highest Opportunity Region</span>
+          <div className="w-9 h-9 rounded-xl bg-indigo-500/20 text-indigo-500 dark:text-indigo-400 flex items-center justify-center border border-indigo-500/30">
+            <MapPin className="w-4 h-4" />
+          </div>
+        </div>
+        <div className={`text-sm font-bold tracking-tight leading-snug line-clamp-2 ${themeConfig.textPrimary}`}>
+          {insights.highestOpportunityRegion}
+        </div>
+        <p className={`text-[11px] mt-1 ${themeConfig.textSecondary}`}>Geographical demand leader</p>
+      </div>
+    </div>
+  );
+}
+
+export function ExecutiveAiSummaryCard({ proposals = [], className = '' }) {
+  const { themeConfig } = useTheme();
+  const insights = useMemo(() => calculateExecutiveInsights(proposals), [proposals]);
+  const exec = themeConfig.executiveCards;
+
+  return (
+    <div className={`p-6 rounded-2xl shadow-2xl relative overflow-hidden transition-all ${exec.aiCard} ${className}`}>
+      <div className="flex items-start gap-4 relative z-10">
+        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border shadow-lg ${
+          themeConfig.mode === 'light'
+            ? 'bg-blue-600 text-white border-2 border-slate-900 shadow-[2px_2px_0_0_#0f172a]'
+            : 'bg-gradient-to-tr from-indigo-600 to-violet-500 text-white border-indigo-400/40 shadow-indigo-500/30'
+        }`}>
+          <Cpu className="w-6 h-6 animate-pulse" />
+        </div>
+
+        <div className="flex-1">
+          <div className="flex items-center justify-between mb-1.5">
+            <div className="flex items-center gap-2">
+              <h3 className={`text-sm font-black tracking-tight ${themeConfig.textPrimary}`}>
+                AI Win/Loss Synthesis
+              </h3>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded flex items-center gap-1 font-mono ${
+                themeConfig.mode === 'light'
+                  ? 'bg-emerald-100 text-emerald-900 border border-emerald-900 font-bold'
+                  : 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/20'
+              }`}>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping"></span>
+                NLP Pattern Engine
               </span>
-            </h2>
-            <p className="text-xs text-slate-400 font-medium">Real-time synthesized executive signals & win/loss dynamics</p>
+            </div>
+          </div>
+
+          <p className={`text-sm leading-relaxed p-4 rounded-xl shadow-inner ${exec.aiTextBubble}`}>
+            "{insights.aiSummary}"
+          </p>
+
+          <div className={`flex items-center justify-between mt-3 text-[11px] ${themeConfig.textSecondary}`}>
+            <span>Automatically generated from sentiment analysis of proposal win/loss feedback reasons.</span>
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+export default function ExecutiveInsights({
+  proposals = [],
+  className = '',
+  showAi = true,
+  showHighlights = true,
+  showHeader = true
+}) {
+  const { themeConfig } = useTheme();
+  const exec = themeConfig.executiveCards;
+
+  return (
+    <div className={`mb-8 ${className}`}>
+      {/* Header Banner */}
+      {showHeader && (
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-2.5">
+            <div className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${exec.bannerIcon}`}>
+              <Sparkles className="w-4 h-4 animate-spin-slow" />
+            </div>
+            <div>
+              <h2 className={`text-base font-bold tracking-tight flex items-center gap-2 ${themeConfig.textPrimary}`}>
+                <span>Executive Briefing & AI Intelligence</span>
+                <span className={`text-[10px] uppercase font-mono px-2 py-0.5 rounded ${exec.bannerBadge}`}>
+                  Premium Insights
+                </span>
+              </h2>
+              <p className={`text-xs font-medium ${themeConfig.textSecondary}`}>
+                Real-time synthesized executive signals & win/loss dynamics
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Grid of Highlight Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-        
-        {/* Card 1: Quarterly Wins */}
-        <div className="glass-card rounded-2xl p-5 border border-emerald-500/30 bg-gradient-to-br from-emerald-950/40 via-slate-900/90 to-slate-950 shadow-xl relative overflow-hidden group">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider">Quarterly Wins</span>
-            <div className="w-9 h-9 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
-              <Award className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="text-2xl font-black text-white font-mono tracking-tight">
-            {insights.quarterlyWins} <span className="text-xs font-sans font-semibold text-emerald-400">Proposals Won</span>
-          </div>
-          <p className="text-[11px] text-slate-400 mt-1">Confirmed victories in recent quarter</p>
-        </div>
-
-        {/* Card 2: Quarterly Losses */}
-        <div className="glass-card rounded-2xl p-5 border border-rose-500/30 bg-gradient-to-br from-rose-950/40 via-slate-900/90 to-slate-950 shadow-xl relative overflow-hidden group">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold text-rose-400 uppercase tracking-wider">Quarterly Losses</span>
-            <div className="w-9 h-9 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center border border-rose-500/30">
-              <AlertTriangle className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="text-2xl font-black text-white font-mono tracking-tight">
-            {insights.quarterlyLosses} <span className="text-xs font-sans font-semibold text-rose-400">Proposals Lost</span>
-          </div>
-          <p className="text-[11px] text-slate-400 mt-1">Missed deals in recent quarter</p>
-        </div>
-
-        {/* Card 3: Highest Demand Scope */}
-        <div className="glass-card rounded-2xl p-5 border border-blue-500/30 bg-gradient-to-br from-blue-950/40 via-slate-900/90 to-slate-950 shadow-xl relative overflow-hidden group">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold text-blue-400 uppercase tracking-wider">Highest Demand Scope</span>
-            <div className="w-9 h-9 rounded-xl bg-blue-500/20 text-blue-400 flex items-center justify-center border border-blue-500/30">
-              <Layers className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="text-sm font-bold text-white tracking-tight leading-snug line-clamp-2">
-            {insights.highestDemandScope}
-          </div>
-          <p className="text-[11px] text-slate-400 mt-1">Top requested QE capability</p>
-        </div>
-
-        {/* Card 4: Highest Opportunity Region */}
-        <div className="glass-card rounded-2xl p-5 border border-indigo-500/30 bg-gradient-to-br from-indigo-950/40 via-slate-900/90 to-slate-950 shadow-xl relative overflow-hidden group">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold text-indigo-400 uppercase tracking-wider">Highest Opportunity Region</span>
-            <div className="w-9 h-9 rounded-xl bg-indigo-500/20 text-indigo-400 flex items-center justify-center border border-indigo-500/30">
-              <MapPin className="w-4 h-4" />
-            </div>
-          </div>
-          <div className="text-sm font-bold text-white tracking-tight leading-snug line-clamp-2">
-            {insights.highestOpportunityRegion}
-          </div>
-          <p className="text-[11px] text-slate-400 mt-1">Geographical demand leader</p>
-        </div>
-
-      </div>
+      {showHighlights && <ExecutiveHighlightCards proposals={proposals} />}
 
       {/* AI Win/Loss Analysis Card */}
-      <div className="glass-card rounded-2xl p-6 border border-indigo-500/40 bg-gradient-to-r from-indigo-950/80 via-slate-900/95 to-slate-950 shadow-2xl relative overflow-hidden">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
-
-        <div className="flex items-start gap-4 relative z-10">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-white shrink-0 shadow-lg shadow-indigo-500/30 border border-indigo-400/40">
-            <Cpu className="w-6 h-6 animate-pulse" />
-          </div>
-
-          <div className="flex-1">
-            <div className="flex items-center justify-between mb-1.5">
-              <div className="flex items-center gap-2">
-                <h3 className="text-sm font-extrabold text-white tracking-tight">AI Win/Loss Synthesis</h3>
-                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 flex items-center gap-1 font-mono">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-                  NLP Pattern Engine
-                </span>
-              </div>
-            </div>
-
-            <p className="text-sm font-semibold text-indigo-200 leading-relaxed bg-slate-900/80 p-4 rounded-xl border border-indigo-900/50 shadow-inner">
-              "{insights.aiSummary}"
-            </p>
-
-            <div className="flex items-center justify-between mt-3 text-[11px] text-slate-400">
-              <span>Automatically generated from sentiment analysis of proposal win/loss feedback reasons.</span>
-            </div>
-          </div>
-        </div>
-      </div>
+      {showAi && <ExecutiveAiSummaryCard proposals={proposals} />}
     </div>
   );
 }

@@ -1,21 +1,33 @@
 import Papa from 'papaparse';
 import * as XLSX from 'xlsx';
-import { SAMPLE_PROPOSALS, DEFAULT_SHEET_URL } from '../mockData/sampleSheetData';
+import { SAMPLE_PROPOSALS, DEFAULT_SHEET_URL } from '../mockData/sampleSheetData.js';
 
-const SHEET_URL_STORAGE_KEY = 'presales_hub_sheet_url_v1';
-const OAUTH_TOKEN_STORAGE_KEY = 'presales_hub_oauth_token_v1';
-const API_KEY_STORAGE_KEY = 'presales_hub_api_key_v1';
-const CACHED_DATA_STORAGE_KEY = 'presales_hub_cached_data_v1';
-const LOCAL_CSV_DATA_KEY = 'presales_hub_local_csv_data_v1';
-const DATA_SOURCE_MODE_KEY = 'presales_hub_data_mode_v1';
+// Storage keys
+export const SHEET_URL_STORAGE_KEY = 'presales_hub_sheet_url_v1';
+export const OAUTH_TOKEN_STORAGE_KEY = 'presales_hub_oauth_token_v1';
+export const API_KEY_STORAGE_KEY = 'presales_hub_api_key_v1';
+export const CACHED_DATA_STORAGE_KEY = 'presales_hub_cached_data_v1';
+export const LOCAL_CSV_DATA_KEY = 'presales_hub_local_csv_data_v1';
+export const DATA_SOURCE_MODE_KEY = 'presales_hub_data_mode_v2';
+export const AUTO_SYNC_ENABLED_KEY = 'presales_hub_auto_sync_enabled_v1';
+export const SYNC_INTERVAL_KEY = 'presales_hub_sync_interval_v1';
+export const LAST_SYNC_TIME_KEY = 'presales_hub_last_sync_time_v1';
+export const LAST_FINGERPRINT_KEY = 'presales_hub_data_fingerprint_v1';
+
+export const LIVE_TEST_SHEET_URL = '/api/live-test-sheet/export?format=csv';
+
+// --- DATA SOURCE & CONFIGURATION ACCESSORS ---
 
 export function getStoredSheetUrl() {
-  return localStorage.getItem(SHEET_URL_STORAGE_KEY) || DEFAULT_SHEET_URL;
+  const stored = localStorage.getItem(SHEET_URL_STORAGE_KEY);
+  if (stored && stored.trim()) return stored.trim();
+  return DEFAULT_SHEET_URL;
 }
 
 export function saveStoredSheetUrl(url) {
-  localStorage.setItem(SHEET_URL_STORAGE_KEY, url);
-  localStorage.setItem(DATA_SOURCE_MODE_KEY, 'remote');
+  if (!url) return;
+  localStorage.setItem(SHEET_URL_STORAGE_KEY, url.trim());
+  localStorage.setItem(DATA_SOURCE_MODE_KEY, 'google_sheet');
 }
 
 export function getStoredOAuthToken() {
@@ -23,19 +35,59 @@ export function getStoredOAuthToken() {
 }
 
 export function saveStoredOAuthToken(token) {
-  localStorage.setItem(OAUTH_TOKEN_STORAGE_KEY, token);
+  localStorage.setItem(OAUTH_TOKEN_STORAGE_KEY, token ? token.trim() : '');
 }
 
 export function getStoredApiKey() {
-  return localStorage.getItem(API_KEY_STORAGE_KEY) || '';
+  const envKey = import.meta?.env?.VITE_GOOGLE_API_KEY || '';
+  return localStorage.getItem(API_KEY_STORAGE_KEY) || envKey;
 }
 
 export function saveStoredApiKey(key) {
-  localStorage.setItem(API_KEY_STORAGE_KEY, key);
+  localStorage.setItem(API_KEY_STORAGE_KEY, key ? key.trim() : '');
 }
 
+/**
+ * Returns 'google_sheet' or 'local_upload'
+ */
 export function getDataMode() {
-  return localStorage.getItem(DATA_SOURCE_MODE_KEY) || 'remote';
+  const mode = localStorage.getItem(DATA_SOURCE_MODE_KEY);
+  if (mode === 'local_upload') return 'local_upload';
+  // Legacy migration: 'remote' -> 'google_sheet'
+  return 'google_sheet';
+}
+
+export function setDataMode(mode) {
+  const normalized = mode === 'local_upload' ? 'local_upload' : 'google_sheet';
+  localStorage.setItem(DATA_SOURCE_MODE_KEY, normalized);
+}
+
+export function getAutoSyncEnabled() {
+  const val = localStorage.getItem(AUTO_SYNC_ENABLED_KEY);
+  return val === null ? true : val === 'true';
+}
+
+export function setAutoSyncEnabled(enabled) {
+  localStorage.setItem(AUTO_SYNC_ENABLED_KEY, String(enabled));
+}
+
+export function getSyncInterval() {
+  const val = localStorage.getItem(SYNC_INTERVAL_KEY);
+  const parsed = parseInt(val, 10);
+  return !isNaN(parsed) && parsed >= 5 ? parsed : 15; // default 15 seconds
+}
+
+export function setSyncInterval(seconds) {
+  const val = Math.max(5, parseInt(seconds, 10) || 15);
+  localStorage.setItem(SYNC_INTERVAL_KEY, String(val));
+}
+
+export function getLastSyncTime() {
+  return localStorage.getItem(LAST_SYNC_TIME_KEY) || null;
+}
+
+export function setLastSyncTime(isoString) {
+  localStorage.setItem(LAST_SYNC_TIME_KEY, isoString || new Date().toISOString());
 }
 
 export function getStoredLocalCsvData() {
@@ -55,45 +107,134 @@ export function saveStoredLocalCsvData(data) {
 
 export function clearStoredLocalCsvData() {
   localStorage.removeItem(LOCAL_CSV_DATA_KEY);
-  localStorage.setItem(DATA_SOURCE_MODE_KEY, 'remote');
+  localStorage.setItem(DATA_SOURCE_MODE_KEY, 'google_sheet');
 }
 
-export function transformGoogleSheetUrlToCsv(url, tabName = 'Proposal Tracker') {
-  if (!url || typeof url !== 'string') return '';
-  const cleanUrl = url.trim();
+// --- URL PARSING & IDENTIFICATION ---
 
-  if (cleanUrl.includes('format=csv') || cleanUrl.includes('output=csv') || cleanUrl.endsWith('.csv')) {
-    return cleanUrl;
+export function parseSheetUrlInfo(rawUrl) {
+  if (!rawUrl || typeof rawUrl !== 'string') {
+    return { isValid: false, error: 'Empty or invalid URL' };
   }
 
-  const matches = cleanUrl.match(/\/d\/([a-zA-Z0-9-_]+)/);
-  if (!matches || !matches[1]) return cleanUrl;
+  const url = rawUrl.trim();
 
-  const sheetId = matches[1];
-  let gid = null;
-  const gidMatch = cleanUrl.match(/[?&#]gid=([0-9]+)/);
-  if (gidMatch && gidMatch[1]) gid = gidMatch[1];
-
-  let sheet = null;
-  const sheetMatch = cleanUrl.match(/[?&]sheet=([^&]+)/);
-  if (sheetMatch && sheetMatch[1]) sheet = sheetMatch[1];
-
-  let exportUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`;
-  if (sheet) {
-    exportUrl += `&sheet=${sheet}`;
-  } else if (gid && gid !== '0') {
-    exportUrl += `&gid=${gid}`;
-  } else {
-    exportUrl += `&sheet=${encodeURIComponent(tabName)}`;
+  // 1. Local live test sheet endpoint
+  if (url.includes('/api/live-test-sheet') || url.startsWith('/api/')) {
+    return {
+      isValid: true,
+      isLocalTest: true,
+      sheetId: 'local-test-sheet',
+      gid: '0',
+      sheetName: 'Proposal Tracker',
+      originalUrl: url
+    };
   }
-  return exportUrl;
+
+  // 2. Published to web (docs.google.com/spreadsheets/d/e/2PACX-.../pub)
+  const publishedMatch = url.match(/\/spreadsheets\/d\/e\/([a-zA-Z0-9-_]+)/);
+  if (publishedMatch && publishedMatch[1]) {
+    return {
+      isValid: true,
+      isPublished: true,
+      sheetId: publishedMatch[1],
+      gid: null,
+      sheetName: null,
+      originalUrl: url
+    };
+  }
+
+  // 3. Standard Google Sheets URL
+  const standardMatch = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  if (standardMatch && standardMatch[1]) {
+    const sheetId = standardMatch[1];
+    let gid = null;
+    let sheetName = null;
+
+    const gidMatch = url.match(/[?&#]gid=([0-9]+)/);
+    if (gidMatch && gidMatch[1]) gid = gidMatch[1];
+
+    const sheetMatch = url.match(/[?&]sheet=([^&#]+)/);
+    if (sheetMatch && sheetMatch[1]) {
+      try {
+        sheetName = decodeURIComponent(sheetMatch[1]);
+      } catch (e) {
+        sheetName = sheetMatch[1];
+      }
+    }
+
+    return {
+      isValid: true,
+      isStandard: true,
+      sheetId,
+      gid,
+      sheetName,
+      originalUrl: url
+    };
+  }
+
+  // 4. Raw sheet ID (e.g. 44-character alphanumeric string)
+  if (/^[a-zA-Z0-9-_]{20,}$/.test(url)) {
+    return {
+      isValid: true,
+      isStandard: true,
+      sheetId: url,
+      gid: null,
+      sheetName: null,
+      originalUrl: url
+    };
+  }
+
+  // 5. Direct CSV URL
+  if (url.endsWith('.csv') || url.includes('format=csv') || url.includes('output=csv')) {
+    return {
+      isValid: true,
+      isDirectCsv: true,
+      sheetId: 'direct-csv',
+      originalUrl: url
+    };
+  }
+
+  return {
+    isValid: false,
+    error: 'Unrecognized URL format. Please paste a Google Sheet link (e.g. https://docs.google.com/spreadsheets/d/.../edit)'
+  };
 }
 
 export function extractSheetId(url) {
-  if (!url) return '';
-  const matches = url.match(/\/d\/([a-zA-Z0-9-_]+)/);
-  return matches ? matches[1] : '';
+  const info = parseSheetUrlInfo(url);
+  return info.isValid ? info.sheetId : '';
 }
+
+export function transformGoogleSheetUrlToCsv(url, tabName = 'Proposal Tracker') {
+  const info = parseSheetUrlInfo(url);
+  if (!info.isValid) return url || '';
+
+  if (info.isLocalTest) {
+    return '/api/live-test-sheet/export?format=csv';
+  }
+
+  if (info.isPublished) {
+    return `https://docs.google.com/spreadsheets/d/e/${info.sheetId}/pub?output=csv`;
+  }
+
+  if (info.isDirectCsv) {
+    return info.originalUrl;
+  }
+
+  // Standard Google Sheet - use GViz endpoint for best reliability
+  let endpoint = `https://docs.google.com/spreadsheets/d/${info.sheetId}/gviz/tq?tqx=out:csv`;
+  if (info.sheetName) {
+    endpoint += `&sheet=${encodeURIComponent(info.sheetName)}`;
+  } else if (info.gid && info.gid !== '0') {
+    endpoint += `&gid=${info.gid}`;
+  } else {
+    endpoint += `&sheet=${encodeURIComponent(tabName)}`;
+  }
+  return endpoint;
+}
+
+// --- DATA NORMALIZATION & CLEANING HELPERS ---
 
 function cleanString(str) {
   if (str === null || str === undefined) return '';
@@ -106,7 +247,7 @@ function cleanString(str) {
 export function stripTimestampFromText(str) {
   if (!str) return '';
   let s = String(str).trim();
-  
+
   // Strip verbose JavaScript dates, GMT offset, timezones, ISO dates
   s = s.replace(/(?:Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\s+\d{4}[^a-zA-Z0-9]*/gi, ' ');
   s = s.replace(/GMT[+-]\d{4}[^a-zA-Z0-9]*/gi, ' ');
@@ -114,9 +255,8 @@ export function stripTimestampFromText(str) {
   s = s.replace(/T?\d{2}:\d{2}(:\d{2})?(\.\d+)?(Z|[+-]\d{2}:?\d{2})?/gi, ' ');
   s = s.replace(/\b\d{4}-\d{2}-\d{2}\b/gi, ' ');
   s = s.replace(/\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/gi, ' ');
-  
-  s = s.replace(/[-_:\s]+/g, ' ').trim();
 
+  s = s.replace(/[-_:\s]+/g, ' ').trim();
   return s;
 }
 
@@ -149,7 +289,7 @@ export function reorderNameAndDate(rawStr) {
   const s = String(rawStr).trim();
 
   const cleanName = stripTimestampFromText(s);
-  
+
   const hasVerboseDate = /(Sun|Mon|Tue|Wed|Thu|Fri|Sat)\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\s+\d{4}/i.test(s) || /GMT[+-]\d{4}/i.test(s);
   const hasIsoDate = /\b\d{4}-\d{2}-\d{2}\b/.test(s) || /\b\d{1,2}\/\d{1,2}\/\d{2,4}\b/.test(s);
 
@@ -167,20 +307,20 @@ export function reorderNameAndDate(rawStr) {
 
 function findHeaderValue(row, possibleNames, defaultValue = '') {
   const keys = Object.keys(row);
-  
+
   for (const possible of possibleNames) {
     const targetNorm = possible.toLowerCase().trim();
-    
+
     for (const key of keys) {
       const cleanKey = cleanString(key).toLowerCase();
-      
+
       if (cleanKey === targetNorm || cleanKey.includes(targetNorm)) {
         const val = cleanString(row[key]);
         if (val !== '') return val;
       }
     }
   }
-  
+
   return defaultValue;
 }
 
@@ -262,7 +402,7 @@ export function normalizeProposalRow(row, index) {
   );
   const status = parseStatus(rawStatus);
 
-  // EXPLICIT MATCH FOR "QE Estimated Deal Value"
+  // Match QE Estimated Deal Value
   const rawValue = findHeaderValue(
     row,
     [
@@ -285,7 +425,7 @@ export function normalizeProposalRow(row, index) {
     ],
     '0'
   );
-  const parsedVal = parseFloat(rawValue.replace(/[^0-9.]/g, ''));
+  const parsedVal = parseFloat(String(rawValue).replace(/[^0-9.]/g, ''));
   const contractValue = isNaN(parsedVal) ? 0 : parsedVal;
 
   const rawDate = findHeaderValue(
@@ -302,7 +442,7 @@ export function normalizeProposalRow(row, index) {
   );
 
   return {
-    id: `prop-sheet-${index + 1}`,
+    id: `prop-${index + 1}`,
     opportunityName,
     clientName,
     region,
@@ -313,6 +453,17 @@ export function normalizeProposalRow(row, index) {
     winLossReason
   };
 }
+
+// --- FINGERPRINT & CHANGE DETECTION ---
+
+export function generateDataFingerprint(proposals) {
+  if (!proposals || !Array.isArray(proposals)) return '';
+  return proposals
+    .map(p => `${p.opportunityName}#${p.clientName}#${p.status}#${p.contractValue}#${p.region}#${p.qeScope}#${p.submissionDate}`)
+    .join('|');
+}
+
+// --- LOCAL FILE PARSERS (100% PRESERVED) ---
 
 export async function parseUploadedExcelFile(file) {
   return new Promise((resolve, reject) => {
@@ -326,14 +477,14 @@ export async function parseUploadedExcelFile(file) {
           throw new Error('Excel file contains no worksheet tabs.');
         }
 
-        let targetSheetName = workbook.SheetNames.find(name => 
-          name.trim().toLowerCase().includes('proposal tracker') || 
+        let targetSheetName = workbook.SheetNames.find(name =>
+          name.trim().toLowerCase().includes('proposal tracker') ||
           name.trim().toLowerCase().includes('proposal') ||
           name.trim().toLowerCase().includes('tracker')
         );
 
         if (!targetSheetName) {
-          targetSheetName = workbook.SheetNames.find(name => 
+          targetSheetName = workbook.SheetNames.find(name =>
             name.trim().toLowerCase().includes('dashboard')
           );
         }
@@ -389,7 +540,7 @@ export async function parseUploadedCsvFile(file) {
       try {
         const text = e.target.result;
         const cleanCsvText = text.replace(/^\uFEFF/, '');
-        
+
         const results = Papa.parse(cleanCsvText, {
           header: true,
           skipEmptyLines: 'greedy',
@@ -427,6 +578,8 @@ export async function parseUploadedCsvFile(file) {
   });
 }
 
+// --- GOOGLE SHEETS API V4 FETCHER ---
+
 export async function fetchPrivateGoogleSheetApi(url, token = null, apiKey = null) {
   const sheetId = extractSheetId(url);
   if (!sheetId) throw new Error('Invalid Google Sheet URL.');
@@ -438,125 +591,393 @@ export async function fetchPrivateGoogleSheetApi(url, token = null, apiKey = nul
     throw new Error('No Google OAuth Bearer token or API key provided.');
   }
 
-  let range = encodeURIComponent('Proposal Tracker!A1:Z1000');
-  let apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}`;
-  if (keyToUse) apiUrl += `?key=${keyToUse}`;
+  const tabCandidates = ['Proposal Tracker', 'Dashboard', 'Sheet1'];
+  let lastError = null;
 
-  const headers = {};
-  if (oauthToken) headers['Authorization'] = `Bearer ${oauthToken}`;
+  for (const tabName of tabCandidates) {
+    try {
+      const range = encodeURIComponent(`${tabName}!A1:Z1000`);
+      let apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}`;
+      if (keyToUse) apiUrl += `?key=${keyToUse}`;
 
-  let response = await fetch(apiUrl, { headers });
-  if (!response.ok) {
-    range = encodeURIComponent('Dashboard!A1:Z1000');
-    apiUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}`;
-    if (keyToUse) apiUrl += `?key=${keyToUse}`;
-    response = await fetch(apiUrl, { headers });
+      const headers = {};
+      if (oauthToken) headers['Authorization'] = `Bearer ${oauthToken}`;
+
+      const response = await fetch(apiUrl, { headers });
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => ({}));
+        throw new Error(errJson.error?.message || `API error ${response.status}`);
+      }
+
+      const data = await response.json();
+      const rows = data.values || [];
+      if (rows.length < 2) continue;
+
+      const headersRow = rows[0];
+      const objectRows = rows.slice(1).map(rowValues => {
+        const obj = {};
+        headersRow.forEach((h, i) => {
+          obj[h] = rowValues[i] || '';
+        });
+        return obj;
+      });
+
+      const validRows = objectRows.filter(isValidProposalRow);
+      if (validRows.length === 0) continue;
+
+      const parsedProposals = validRows.map((r, i) => normalizeProposalRow(r, i));
+      return {
+        success: true,
+        data: parsedProposals,
+        tabName,
+        message: `Successfully synchronized ${parsedProposals.length} records via Google Sheets API v4.`
+      };
+    } catch (err) {
+      lastError = err;
+    }
   }
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
-    const errorMsg = errorData.error?.message || `Google Sheets API returned status ${response.status}`;
-    throw new Error(errorMsg);
+  throw lastError || new Error('Could not retrieve valid proposal rows via Google Sheets API v4.');
+}
+
+// --- MULTI-STRATEGY REMOTE FETCHER ---
+
+async function fetchWithProxyFallback(url) {
+  try {
+    const res = await fetch(url, { cache: 'no-cache' });
+    return res;
+  } catch (directErr) {
+    // If browser CORS or network error occurred, try local Vite proxy
+    try {
+      const proxyUrl = `/api/sheet-proxy?url=${encodeURIComponent(url)}`;
+      const proxyRes = await fetch(proxyUrl, { cache: 'no-cache' });
+      return proxyRes;
+    } catch (proxyErr) {
+      throw directErr; // Throw original fetch error
+    }
+  }
+}
+
+export async function fetchRemoteSpreadsheetData(sheetUrl) {
+  const urlInfo = parseSheetUrlInfo(sheetUrl);
+
+  if (!urlInfo.isValid) {
+    return {
+      success: false,
+      errorType: 'INVALID_URL',
+      message: urlInfo.error || 'The entered URL is not a recognized Google Spreadsheet link.',
+      troubleshootingTip: 'Please paste a valid Google Sheet URL, e.g. https://docs.google.com/spreadsheets/d/.../edit#gid=0'
+    };
   }
 
-  const data = await response.json();
-  const rows = data.values || [];
-  if (rows.length < 2) {
-    throw new Error('Google Sheet returned 0 data rows.');
+  // 1. If Local Live Test Sheet
+  if (urlInfo.isLocalTest) {
+    try {
+      const response = await fetch('/api/live-test-sheet/export?format=csv', { cache: 'no-cache' });
+      if (!response.ok) {
+        throw new Error(`Test server returned status ${response.status}`);
+      }
+      const csvText = await response.text();
+      const results = Papa.parse(csvText.replace(/^\uFEFF/, ''), { header: true, skipEmptyLines: 'greedy', transformHeader: h => cleanString(h) });
+      const validRows = (results.data || []).filter(isValidProposalRow);
+      const parsedProposals = validRows.map((r, i) => normalizeProposalRow(r, i));
+
+      return {
+        success: true,
+        data: parsedProposals,
+        isSample: false,
+        sourceType: 'live_test_sheet',
+        tabName: 'Live Interactive Testbed',
+        message: `Successfully synchronized ${parsedProposals.length} live records from interactive testbed.`
+      };
+    } catch (e) {
+      return {
+        success: false,
+        errorType: 'NETWORK_ERROR',
+        message: `Failed to connect to local test sheet: ${e.message}`,
+        troubleshootingTip: 'Ensure the Vite development server is running.'
+      };
+    }
   }
 
-  const headersRow = rows[0];
-  const objectRows = rows.slice(1).map(rowValues => {
-    const obj = {};
-    headersRow.forEach((h, i) => {
-      obj[h] = rowValues[i] || '';
+  // 2. If OAuth Token or API Key is provided, attempt Google Sheets API v4 first
+  const oauthToken = getStoredOAuthToken();
+  const apiKey = getStoredApiKey();
+  if (oauthToken || apiKey) {
+    try {
+      const apiResult = await fetchPrivateGoogleSheetApi(sheetUrl, oauthToken, apiKey);
+      if (apiResult.success) {
+        return {
+          ...apiResult,
+          sourceType: 'google_api_v4'
+        };
+      }
+    } catch (apiErr) {
+      console.warn('Google Sheets API v4 attempt failed, trying public endpoints:', apiErr.message);
+    }
+  }
+
+  // 3. Candidate endpoints for Google Visualization / CSV Export
+  const candidateUrls = [];
+  if (urlInfo.isPublished) {
+    candidateUrls.push({
+      url: `https://docs.google.com/spreadsheets/d/e/${urlInfo.sheetId}/pub?output=csv`,
+      label: 'Published CSV'
     });
-    return obj;
-  });
+  } else if (urlInfo.isDirectCsv) {
+    candidateUrls.push({
+      url: urlInfo.originalUrl,
+      label: 'Direct CSV'
+    });
+  } else {
+    // Standard Sheet
+    const sheetId = urlInfo.sheetId;
+    if (urlInfo.gid) {
+      candidateUrls.push({
+        url: `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&gid=${urlInfo.gid}`,
+        label: `GViz (gid=${urlInfo.gid})`
+      });
+      candidateUrls.push({
+        url: `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${urlInfo.gid}`,
+        label: `Export CSV (gid=${urlInfo.gid})`
+      });
+    }
+    if (urlInfo.sheetName) {
+      candidateUrls.push({
+        url: `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(urlInfo.sheetName)}`,
+        label: `GViz (Tab: ${urlInfo.sheetName})`
+      });
+    }
+    candidateUrls.push({
+      url: `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent('Proposal Tracker')}`,
+      label: 'GViz (Tab: Proposal Tracker)'
+    });
+    candidateUrls.push({
+      url: `https://docs.google.com/spreadsheets/d/${sheetId}/gviz/tq?tqx=out:csv`,
+      label: 'GViz (First Sheet)'
+    });
+    candidateUrls.push({
+      url: `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv`,
+      label: 'Export CSV (First Sheet)'
+    });
+  }
 
-  const validRows = objectRows.filter(isValidProposalRow);
-  const parsedProposals = validRows.map((r, i) => normalizeProposalRow(r, i));
+  let accessDeniedDetected = false;
+  let notFoundDetected = false;
+  let lastFetchError = null;
 
-  localStorage.setItem(CACHED_DATA_STORAGE_KEY, JSON.stringify(parsedProposals));
-  localStorage.setItem(DATA_SOURCE_MODE_KEY, 'remote');
+  for (const candidate of candidateUrls) {
+    try {
+      const response = await fetchWithProxyFallback(candidate.url);
+
+      if (response.status === 401 || response.status === 403) {
+        accessDeniedDetected = true;
+        continue;
+      }
+      if (response.status === 404) {
+        notFoundDetected = true;
+        continue;
+      }
+
+      if (!response.ok) {
+        continue;
+      }
+
+      const text = await response.text();
+
+      // Check if redirected to Google sign-in page
+      if (
+        text.includes('accounts.google.com') ||
+        text.includes('ServiceLogin') ||
+        (text.includes('<!DOCTYPE html>') && text.includes('Google Sheets'))
+      ) {
+        accessDeniedDetected = true;
+        continue;
+      }
+
+      const cleanText = text.replace(/^\uFEFF/, '').trim();
+      if (!cleanText || cleanText.startsWith('<!DOCTYPE') || cleanText.startsWith('<html')) {
+        continue;
+      }
+
+      const results = Papa.parse(cleanText, {
+        header: true,
+        skipEmptyLines: 'greedy',
+        transformHeader: h => cleanString(h)
+      });
+
+      const validRows = (results.data || []).filter(isValidProposalRow);
+      if (validRows.length > 0) {
+        const parsedProposals = validRows.map((r, i) => normalizeProposalRow(r, i));
+        return {
+          success: true,
+          data: parsedProposals,
+          sourceType: 'google_gviz_csv',
+          tabName: candidate.label,
+          message: `Successfully synchronized ${parsedProposals.length} proposal records from Google Sheet.`
+        };
+      }
+    } catch (err) {
+      lastFetchError = err;
+    }
+  }
+
+  // If we reach here, determine the most helpful diagnostic error
+  if (accessDeniedDetected) {
+    return {
+      success: false,
+      errorType: 'ACCESS_DENIED',
+      message: 'This Google Sheet is confidential/private and requires authorization.',
+      troubleshootingTip: "To connect without an API key, click 'Share' in Google Sheets and choose 'Anyone with the link can view'. Alternatively, enter your Google Cloud API Key or OAuth Bearer Token in Option 2."
+    };
+  }
+
+  if (notFoundDetected) {
+    return {
+      success: false,
+      errorType: 'NOT_FOUND',
+      message: 'Google Spreadsheet document was not found (404).',
+      troubleshootingTip: 'Please check the spreadsheet ID or verify the sheet has not been deleted or moved.'
+    };
+  }
 
   return {
-    success: true,
-    data: parsedProposals,
-    isSample: false,
-    message: `Successfully authenticated via Google API & extracted ${parsedProposals.length} proposal records.`
+    success: false,
+    errorType: 'INVALID_FORMAT',
+    message: 'Connected to spreadsheet, but could not detect proposal columns.',
+    troubleshootingTip: "Verify that the sheet has a tab with proposal columns such as 'Opportunity Name', 'Client Name', 'Status', 'QE Scope', and 'QE Estimated Deal Value'."
   };
 }
 
-export async function fetchSheetData(customUrl = null, forceRemote = false) {
+// --- MAIN FETCH & SYNC CONTROLLER ---
+
+export async function fetchSheetData(customUrl = null, options = {}) {
+  const { forceRemote = false } = options;
   const mode = getDataMode();
+
+  // If Local Upload mode is active and user didn't force remote sync
   if (mode === 'local_upload' && !forceRemote) {
     const localData = getStoredLocalCsvData();
     if (localData && localData.length > 0) {
       return {
         success: true,
         data: localData,
+        sourceType: 'local_upload',
         isSample: false,
-        message: `Loaded ${localData.length} proposal records from uploaded file.`
+        changed: false,
+        lastSyncTime: getLastSyncTime(),
+        message: `Displaying ${localData.length} records from uploaded Excel file.`
       };
     }
   }
 
+  // Google Sheet Mode
   const urlToUse = customUrl || getStoredSheetUrl();
-  const oauthToken = getStoredOAuthToken();
-  const apiKey = getStoredApiKey();
+  const remoteResult = await fetchRemoteSpreadsheetData(urlToUse);
 
-  if (oauthToken || apiKey) {
+  if (remoteResult.success) {
+    const currentFingerprint = localStorage.getItem(LAST_FINGERPRINT_KEY) || '';
+    const newFingerprint = generateDataFingerprint(remoteResult.data);
+    const hasChanged = currentFingerprint !== newFingerprint;
+
+    const syncTime = new Date().toISOString();
+    setLastSyncTime(syncTime);
+    localStorage.setItem(LAST_FINGERPRINT_KEY, newFingerprint);
+    localStorage.setItem(CACHED_DATA_STORAGE_KEY, JSON.stringify(remoteResult.data));
+    localStorage.setItem(DATA_SOURCE_MODE_KEY, 'google_sheet');
+
+    return {
+      success: true,
+      data: remoteResult.data,
+      changed: hasChanged,
+      sourceType: remoteResult.sourceType,
+      tabName: remoteResult.tabName,
+      isSample: false,
+      lastSyncTime: syncTime,
+      message: remoteResult.message
+    };
+  }
+
+  // Remote fetch failed - handle fallbacks gracefully
+  const cachedStr = localStorage.getItem(CACHED_DATA_STORAGE_KEY);
+  if (cachedStr) {
     try {
-      return await fetchPrivateGoogleSheetApi(urlToUse, oauthToken, apiKey);
-    } catch (apiErr) {
-      console.warn('Google Sheets API v4 attempt failed:', apiErr.message);
+      const cachedData = JSON.parse(cachedStr);
+      return {
+        success: false,
+        error: remoteResult,
+        data: cachedData,
+        isFallback: true,
+        isSample: false,
+        lastSyncTime: getLastSyncTime(),
+        message: `${remoteResult.message} Showing last cached data (${cachedData.length} proposals).`
+      };
+    } catch (e) {
+      // ignore
     }
   }
 
-  const csvUrl = transformGoogleSheetUrlToCsv(urlToUse, 'Proposal Tracker');
+  // Final fallback: SAMPLE_PROPOSALS
+  return {
+    success: false,
+    error: remoteResult,
+    data: SAMPLE_PROPOSALS,
+    isFallback: true,
+    isSample: true,
+    lastSyncTime: null,
+    message: `${remoteResult.message} Showing sample demo dataset.`
+  };
+}
+
+// --- LIVE TEST SIMULATOR MUTATION HELPERS ---
+
+export async function editLiveTestSheetCell({ id, field, value }) {
   try {
-    const response = await fetch(csvUrl);
-    if (!response.ok) {
-      throw new Error(`Public CSV fetch status ${response.status}. Sheet is private/confidential.`);
-    }
+    const res = await fetch('/api/live-test-sheet/edit-cell', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, field, value })
+    });
+    return await res.json();
+  } catch (e) {
+    return { error: e.message };
+  }
+}
 
-    const csvText = await response.text();
-    const cleanCsvText = csvText.replace(/^\uFEFF/, '');
-    const results = Papa.parse(cleanCsvText, { header: true, skipEmptyLines: 'greedy', transformHeader: (h) => cleanString(h) });
+export async function addLiveTestSheetRow(row) {
+  try {
+    const res = await fetch('/api/live-test-sheet/add-row', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(row)
+    });
+    return await res.json();
+  } catch (e) {
+    return { error: e.message };
+  }
+}
 
-    const validRows = (results.data || []).filter(isValidProposalRow);
-    const parsedProposals = validRows.map((row, idx) => normalizeProposalRow(row, idx));
+export async function deleteLiveTestSheetRow(id = null) {
+  try {
+    const res = await fetch('/api/live-test-sheet/delete-row', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    });
+    return await res.json();
+  } catch (e) {
+    return { error: e.message };
+  }
+}
 
-    localStorage.setItem(CACHED_DATA_STORAGE_KEY, JSON.stringify(parsedProposals));
-    localStorage.setItem(DATA_SOURCE_MODE_KEY, 'remote');
-
-    return {
-      success: true,
-      data: parsedProposals,
-      isSample: false,
-      message: `Successfully synchronized ${parsedProposals.length} proposal records from Google Sheet.`
-    };
-  } catch (err) {
-    const localData = getStoredLocalCsvData();
-    if (localData && localData.length > 0) {
-      return {
-        success: true,
-        data: localData,
-        isSample: false,
-        message: `Loaded ${localData.length} records from uploaded file.`
-      };
-    }
-
-    const cached = localStorage.getItem(CACHED_DATA_STORAGE_KEY);
-    const dataToUse = cached ? JSON.parse(cached) : SAMPLE_PROPOSALS;
-    return {
-      success: true,
-      data: dataToUse,
-      isSample: dataToUse === SAMPLE_PROPOSALS,
-      message: dataToUse === SAMPLE_PROPOSALS 
-        ? 'Confidential sheet requires OAuth authentication or direct Excel/CSV upload. Showing demo dataset.'
-        : `Loaded ${dataToUse.length} cached proposal records.`
-    };
+export async function resetLiveTestSheet() {
+  try {
+    const res = await fetch('/api/live-test-sheet/reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    return await res.json();
+  } catch (e) {
+    return { error: e.message };
   }
 }

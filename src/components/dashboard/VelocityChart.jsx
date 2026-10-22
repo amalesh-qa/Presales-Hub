@@ -1,8 +1,12 @@
 import React from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { TrendingUp } from 'lucide-react';
+import { useTheme } from '../../context/ThemeContext';
 
-export default function VelocityChart({ proposals = [] }) {
+export default function VelocityChart({ proposals = [], className = '' }) {
+  const { themeConfig } = useTheme();
+  const vTheme = themeConfig.chartTheme;
+
   // Aggregate proposals by Month (YYYY-MM or Month Name)
   const monthCounts = {};
 
@@ -28,12 +32,12 @@ export default function VelocityChart({ proposals = [] }) {
     if (active && payload && payload.length) {
       const dataPoint = payload[0].payload;
       return (
-        <div className="bg-slate-900 border border-slate-700 p-3 rounded-xl shadow-xl text-xs">
-          <div className="font-bold text-white flex items-center gap-2">
-            <TrendingUp className="w-3.5 h-3.5 text-indigo-400" />
+        <div className={`${vTheme.tooltipBg} ${vTheme.tooltipBorder} p-3 rounded-xl shadow-xl text-xs`}>
+          <div className={`${vTheme.tooltipTitle} flex items-center gap-2`}>
+            <TrendingUp className="w-3.5 h-3.5 text-current" />
             {dataPoint.month}
           </div>
-          <div className="text-slate-300 mt-1 font-mono">
+          <div className={`${vTheme.tooltipValue} mt-1 font-mono`}>
             {dataPoint.count} Proposals Submitted
           </div>
         </div>
@@ -43,22 +47,26 @@ export default function VelocityChart({ proposals = [] }) {
   };
 
   return (
-    <div className="glass-card rounded-2xl p-6 border border-slate-800/80 flex flex-col justify-between h-[380px]">
+    <div className={`${themeConfig.card} ${themeConfig.cardHover} p-6 flex flex-col justify-between ${className || 'h-[380px]'}`}>
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center border border-amber-500/30">
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center border ${
+            themeConfig.mode === 'light'
+              ? 'bg-purple-100 text-purple-800 border-2 border-slate-900 shadow-[1px_1px_0_0_#0f172a]'
+              : 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+          }`}>
             <TrendingUp className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-white">Monthly Proposal Velocity Trend</h3>
-            <p className="text-[11px] text-slate-400 font-medium">Submission cadence over time</p>
+            <h3 className={`text-sm ${themeConfig.cardHeader}`}>Monthly Proposal Velocity Trend</h3>
+            <p className={`text-[11px] ${themeConfig.cardSubtitle}`}>Submission cadence over time</p>
           </div>
         </div>
       </div>
 
       <div className="w-full h-[280px]">
         {data.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-slate-500 text-xs font-medium">
+          <div className={`h-full flex items-center justify-center text-xs font-medium ${themeConfig.textMuted}`}>
             No proposal timeline data available
           </div>
         ) : (
@@ -66,20 +74,20 @@ export default function VelocityChart({ proposals = [] }) {
             <AreaChart data={data} margin={{ top: 20, right: 20, left: -10, bottom: 20 }}>
               <defs>
                 <linearGradient id="velocityGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4} />
-                  <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                  <stop offset="5%" stopColor={vTheme.velocityGradient.start} stopOpacity={vTheme.velocityGradient.startOpacity} />
+                  <stop offset="95%" stopColor={vTheme.velocityGradient.end} stopOpacity={vTheme.velocityGradient.endOpacity} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+              <CartesianGrid strokeDasharray="3 3" stroke={vTheme.gridStroke} vertical={false} />
               <XAxis
                 dataKey="month"
-                stroke="#64748b"
-                tick={{ fill: '#94a3b8', fontSize: 11, fontWeight: 500 }}
+                stroke={vTheme.axisStroke}
+                tick={{ fill: vTheme.tickFill, fontSize: 11, fontWeight: 600 }}
                 tickLine={false}
               />
               <YAxis
-                stroke="#64748b"
-                tick={{ fill: '#94a3b8', fontSize: 11 }}
+                stroke={vTheme.axisStroke}
+                tick={{ fill: vTheme.tickFill, fontSize: 11 }}
                 allowDecimals={false}
                 tickLine={false}
               />
@@ -87,12 +95,22 @@ export default function VelocityChart({ proposals = [] }) {
               <Area
                 type="monotone"
                 dataKey="count"
-                stroke="#818cf8"
-                strokeWidth={3}
+                stroke={vTheme.velocityStroke}
+                strokeWidth={themeConfig.mode === 'light' ? 3.5 : 3}
                 fillOpacity={1}
                 fill="url(#velocityGradient)"
-                dot={{ r: 5, fill: '#6366f1', stroke: '#ffffff', strokeWidth: 2 }}
-                activeDot={{ r: 7, fill: '#a5b4fc', stroke: '#ffffff', strokeWidth: 2 }}
+                dot={{
+                  r: 5,
+                  fill: vTheme.velocityDots.dotFill,
+                  stroke: vTheme.velocityDots.dotStroke,
+                  strokeWidth: 2
+                }}
+                activeDot={{
+                  r: 7,
+                  fill: vTheme.velocityDots.activeFill,
+                  stroke: vTheme.velocityDots.activeStroke,
+                  strokeWidth: 2
+                }}
               />
             </AreaChart>
           </ResponsiveContainer>

@@ -1,4 +1,4 @@
-export const DEFAULT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1kZZam5HXYYi-DzfFWYaIwmhwdVYa-jdEUgRXaKeCTpk/edit?gid=0#gid=0';
+export const DEFAULT_SHEET_URL = 'https://docs.google.com/spreadsheets/d/1ju6I7Uq80I-uPzzr-a_PYBDFV2xKqlWDOfEQWSw83n4/edit?gid=1479006619#gid=1479006619';
 
 export const SAMPLE_PROPOSALS = [
   {
